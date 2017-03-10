@@ -207,7 +207,7 @@ def Act(name, bottom, bn=True, durelu=False, bn_frac=0.9, leaky=0):
         durelu_layer = caffe_pb2.LayerParameter()
         durelu_layer.name = name + '_durelu'
         durelu_layer.type = 'Concat'
-        durelu_layer.bottom.extend([top_name+'_pos_relu', top_name+'neg_relu'])
+        durelu_layer.bottom.extend([top_name+'_pos_relu', top_name+'_neg_relu'])
         durelu_layer.top.extend([top_name+'_durelu'])
         ret_layers.extend([pos_relu_layer, neg_layer, neg_relu_layer, durelu_layer])
     elif leaky == 0:
