@@ -14,7 +14,7 @@ import numpy as np
 DTYPE = np.float32
 
 class SolverWGAN(object):
-    PARAM_LAYER_TYPE = ['Convolution', 'Scale', 'InnerProduct']
+    PARAM_LAYER_TYPE = ['Deconvolution', 'Convolution', 'Scale', 'InnerProduct']
     def __init__(self, net_g, net_d, test_net_g=None, test_net_d=None,
                  lr=0.00005, mom=0.9, mom2=0.99, eps=1e-8, c=0.01,
                  inner_iter=5, solver_type='RMSProp'):
