@@ -5,22 +5,23 @@ Created on Thu Mar 02 17:22:12 2017
 @author: shiwu_001
 """
 
-import os.path as osp
+#import os.path as osp
 import sys
 import google.protobuf as pb
 from argparse import ArgumentParser
 
-CAFFE_ROOT = r'E:\projects\cpp\caffe-windows-ms'
-PYCAFFE_PATH = osp.join(CAFFE_ROOT, r'Build\x64\Release\pycaffe')
-if PYCAFFE_PATH not in sys.path:
-    sys.path.insert(0, PYCAFFE_PATH)
+#CAFFE_ROOT = r'E:\projects\cpp\caffe-windows-ms'
+#PYCAFFE_PATH = osp.join(CAFFE_ROOT, r'Build\x64\Release\pycaffe')
+from config import PYCAFFE_ROOT
+if PYCAFFE_ROOT not in sys.path:
+    sys.path.insert(0, PYCAFFE_ROOT)
 from caffe.proto import caffe_pb2
 
 import layer_def as ld
 
 def create_dcgan_g(randsize=100, batchsize=64, output_chn=3, output_size=64,
                    depth=4, last_chn=128, kernel_size=4, stride=2, pad=1,
-                   filler_spec=('msra', 0, 1)):
+                   filler_spec=('msra', 0, 1), durelu=False):
     net = caffe_pb2.NetParameter()
     net.name = 'GenNet%d' % (randsize)
     chn = range(depth)
@@ -41,14 +42,14 @@ def create_dcgan_g(randsize=100, batchsize=64, output_chn=3, output_size=64,
                             filler_spec=filler_spec))
     layers.append(ld.Reshape('ip_reshape', layers[-1].top[0],
                              [batchsize, chn[0], first_feat_size, first_feat_size]))
-    layers.extend(ld.Act('ip_act', layers[-1].top[0], bn_frac=0.9))
+    layers.extend(ld.Act('ip_act', layers[-1].top[0], bn_frac=0.9, durelu=durelu))
     # following layer
     for i in range(1, depth):
         layers.append(ld.Deconv('deconv%d' % (i-depth), layers[-1].top[0],
                                 chn[i], kernel_size, stride, pad,
                                 bias_term=False, filler_spec=filler_spec))
         layers.extend(ld.Act('deconv%d_act' % (i-depth), layers[-1].top[0],
-                             bn_frac=0.9))
+                             bn_frac=0.9, durelu=durelu))
     # output layer
     layers.append(ld.Deconv('gen_data', layers[-1].top[0], output_chn,
                             kernel_size, stride, pad, bias_term=True,
@@ -61,7 +62,7 @@ def create_dcgan_g(randsize=100, batchsize=64, output_chn=3, output_size=64,
 def create_dcgan_d(batchsize=64, input_chn=3, input_size=64, depth=4,
                    first_chn=128, kernel_size=4, stride=2, pad=1,
                    leaky=0, sigmoid=False, filler_spec=('msra', 0, 1),
-                   bnfirst=True):
+                   bnfirst=True, durelu=False):
     net = caffe_pb2.NetParameter()
     net.name = 'DisNet'
     chn = range(depth)
@@ -80,13 +81,13 @@ def create_dcgan_d(batchsize=64, input_chn=3, input_size=64, depth=4,
     # let the gradient propagate to the input blob
     layers[-1].propagate_down.append(True)
     layers.extend(ld.Act('conv0_act', layers[-1].top[0],
-                         bn_frac=0.9, leaky=leaky, bn=bnfirst))
+                         bn_frac=0.9, leaky=leaky, bn=bnfirst, durelu=durelu))
     for i in range(1, depth):
         layers.append(ld.Conv('conv%d' % (i), layers[-1].top[0], chn[i],
                               kernel_size, stride, pad, bias_term=False,
                               filler_spec=filler_spec))
         layers.extend(ld.Act('conv%d_act' % (i), layers[-1].top[0],
-                             bn_frac=0.9, leaky=leaky))
+                             bn_frac=0.9, leaky=leaky, durelu=durelu))
     # output
     if sigmoid:
         layers.append(ld.Linear('ip_score', layers[-1].top[0], 1,
@@ -105,10 +106,10 @@ def main(args):
     else:
         filler_spec = ('gaussian', 0, args.gstd)
     if args.gd == 'g':
-        dcnet = create_dcgan_g(filler_spec=filler_spec)
+        dcnet = create_dcgan_g(last_chn=args.chn, filler_spec=filler_spec, durelu=args.durelu)
     else:
-        dcnet = create_dcgan_d(sigmoid=args.sigm, filler_spec=filler_spec,
-                               leaky=args.leaky, bnfirst=(not args.nobnfirst))
+        dcnet = create_dcgan_d(first_chn=args.chn, sigmoid=args.sigm, filler_spec=filler_spec,
+                               leaky=args.leaky, bnfirst=(not args.nobnfirst), durelu=args.durelu)
     if args.output is None:
         args.output = osp.join(osp.dirname(__file__), 
                                'dcgan_g_spec.prototxt')
@@ -123,7 +124,7 @@ if __name__ == '__main__':
     parser.add_argument('--nobnfirst', action='store_true', default=False)
     parser.add_argument('--gstd', type=float, default=-1)
     parser.add_argument('--leaky', type=float, default=0)
+    parser.add_argument('--durelu', action='store_true', default=False)
+    parser.add_argument('--chn', type=int, default=128)
     args = parser.parse_args()
     main(args)
-    
-    

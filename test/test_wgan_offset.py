@@ -111,7 +111,7 @@ def generate_test_samples(net_g, net_d, n_samples=64):
             (gen_images[:n_samples,...], gen_scores[:n_samples,...])]
 
 def setup_solver(args):
-    scale = np.array(0.5)
+    scale = np.array([64.0 / ((218.0 + 128.0) *0.5)])
     mean = np.array([127.5, 127.5, 127.5])
     std = np.array([127.5, 127.5, 127.5])
     rand_std = 1.0

@@ -7,10 +7,10 @@ Created on Fri Nov 11 15:15:56 2016
 
 import os.path as osp
 
-CAFFE_ROOT = '../..'
+CAFFE_ROOT = '/home/sw015/caffe'
 CAFFE_INCLUDE = osp.join(CAFFE_ROOT, 'include')
 LATTE_ROOT = osp.join(CAFFE_ROOT, 'examples')
-PYCAFFE_ROOT = osp.join(CAFFE_ROOT, 'Build', 'x64', 'Release', 'pycaffe')
+PYCAFFE_ROOT = osp.join(CAFFE_ROOT, 'python')
 
 USE_GPU = True
 DEVICE_ID = 1

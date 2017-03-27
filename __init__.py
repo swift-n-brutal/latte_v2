@@ -6,8 +6,8 @@ Created on Fri Nov 11 15:13:43 2016
 """
 
 from .config import USE_GPU, DEVICE_ID, PYCAFFE_ROOT
-#import sys
-#sys.path.insert(0, PYCAFFE_ROOT)
+import sys
+sys.path.insert(0, PYCAFFE_ROOT)
 if USE_GPU:
     from .util import get_block_shape, get_grid_shape, set_device, CAFFE_CUDA_CONTEXT
     print "Do not use caffe.set_mode_cpu()/set_mode_gpu()/set_device()"
@@ -20,5 +20,5 @@ from .solver_wgan import SolverWGAN
 from .net import Net
 from .blob import Blob
 from .dataloader import CifarDataLoader, CifarTransformer, CifarDataLoaderMultiThreading
-from .image_dataloader import ImageDataLoader, ImageDataLoaderPrefetch, ImageTransformer
+from .image_dataloader import ImageDataLoader, ImageDataLoaderPrefetch, ImageTransformer, BBoxImageDataLoaderPrefetch
 from .rand_dataloader import RandDataLoader

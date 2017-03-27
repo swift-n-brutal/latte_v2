@@ -5,14 +5,14 @@ Created on Thu Mar 02 15:01:51 2017
 @author: shiwu_001
 """
 
-import os.path as osp
-import sys
+#import os.path as osp
+#import sys
 #import google.protobuf as pb
 
-CAFFE_ROOT = r'E:\projects\cpp\caffe-windows-ms'
-PYCAFFE_PATH = osp.join(CAFFE_ROOT, r'Build\x64\Release\pycaffe')
-if PYCAFFE_PATH not in sys.path:
-    sys.path.insert(0, PYCAFFE_PATH)
+#CAFFE_ROOT = r'E:\projects\cpp\caffe-windows-ms'
+#PYCAFFE_PATH = osp.join(CAFFE_ROOT, r'Build\x64\Release\pycaffe')
+#if PYCAFFE_PATH not in sys.path:
+#    sys.path.insert(0, PYCAFFE_PATH)
 from caffe.proto import caffe_pb2
 
 def _get_include(phase):
@@ -207,7 +207,7 @@ def Act(name, bottom, bn=True, durelu=False, bn_frac=0.9, leaky=0):
         durelu_layer = caffe_pb2.LayerParameter()
         durelu_layer.name = name + '_durelu'
         durelu_layer.type = 'Concat'
-        durelu_layer.bottom.extend([top_name+'_pos_relu', top_name+'neg_relu'])
+        durelu_layer.bottom.extend([top_name+'_pos_relu', top_name+'_neg_relu'])
         durelu_layer.top.extend([top_name+'_durelu'])
         ret_layers.extend([pos_relu_layer, neg_layer, neg_relu_layer, durelu_layer])
     elif leaky == 0:

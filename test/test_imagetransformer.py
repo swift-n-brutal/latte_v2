@@ -16,13 +16,13 @@ import time
 import matplotlib.pyplot as plt
 from PIL import Image, ImageDraw, ImageFont
 
-CAFFE_ROOT = r'E:\projects\cpp\caffe-windows-ms'
-PYCAFFE_PATH = osp.join(CAFFE_ROOT, r'Build\x64\Release\pycaffe')
-if PYCAFFE_PATH not in sys.path:
-    sys.path.insert(0, PYCAFFE_PATH)
+#CAFFE_ROOT = r'E:\projects\cpp\caffe-windows-ms'
+#PYCAFFE_PATH = osp.join(CAFFE_ROOT, r'Build\x64\Release\pycaffe')
+#if PYCAFFE_PATH not in sys.path:
+#    sys.path.insert(0, PYCAFFE_PATH)
 from caffe import TRAIN, TEST
 
-LATTE_PATH = r'E:\projects\cpp\caffe-windows-ms\examples'
+LATTE_PATH = '/home/sw015/project'
 if LATTE_PATH not in sys.path:
     sys.path.insert(0, LATTE_PATH)
 from latte_v2 import set_device, Net, SolverWGAN, RandDataLoader, \

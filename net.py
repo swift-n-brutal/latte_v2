@@ -5,15 +5,15 @@ Created on Fri Mar 03 18:31:58 2017
 @author: shiwu_001
 """
 
-import os.path as osp
-import sys
+#import os.path as osp
+#import sys
 #import google.protobuf as pb
 #from argparse import ArgumentParser
 
-CAFFE_ROOT = r'E:\projects\cpp\caffe-windows-ms'
-PYCAFFE_PATH = osp.join(CAFFE_ROOT, r'Build\x64\Release\pycaffe')
-if PYCAFFE_PATH not in sys.path:
-    sys.path.insert(0, PYCAFFE_PATH)
+#CAFFE_ROOT = r'E:\projects\cpp\caffe-windows-ms'
+#PYCAFFE_PATH = osp.join(CAFFE_ROOT, r'Build\x64\Release\pycaffe')
+#if PYCAFFE_PATH not in sys.path:
+#    sys.path.insert(0, PYCAFFE_PATH)
     
 from caffe import TRAIN
 from caffe import Net as CaffeNet
