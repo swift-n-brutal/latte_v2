@@ -32,29 +32,29 @@ def create_dcgan_g(randsize=100, batchsize=64, output_chn=3, output_size=64,
         first_feat_size /= 2
     layers = []
     # rand vector
-    layers.append(ld.Input('rand_input', ['rand_input'],
+    layers.extend(ld.Input('rand_input', ['rand_input'],
                            [[batchsize, randsize]], 'train'))
-    layers.append(ld.Input('rand_input', ['rand_input'],
+    layers.extend(ld.Input('rand_input', ['rand_input'],
                            [[batchsize, randsize]], 'test'))
     # first layer
     num_ip = chn[0] * first_feat_size * first_feat_size
-    layers.append(ld.Linear('ip', layers[-1].top[0], num_ip, bias_term=False,
+    layers.extend(ld.Linear('ip', layers[-1].top[0], num_ip, bias_term=False,
                             filler_spec=filler_spec))
-    layers.append(ld.Reshape('ip_reshape', layers[-1].top[0],
+    layers.extend(ld.Reshape('ip_reshape', layers[-1].top[0],
                              [batchsize, chn[0], first_feat_size, first_feat_size]))
     layers.extend(ld.Act('ip_act', layers[-1].top[0], bn_frac=0.9, durelu=durelu))
     # following layer
     for i in range(1, depth):
-        layers.append(ld.Deconv('deconv%d' % (i-depth), layers[-1].top[0],
+        layers.extend(ld.Deconv('deconv%d' % (i-depth), layers[-1].top[0],
                                 chn[i], kernel_size, stride, pad,
                                 bias_term=False, filler_spec=filler_spec))
         layers.extend(ld.Act('deconv%d_act' % (i-depth), layers[-1].top[0],
                              bn_frac=0.9, durelu=durelu))
     # output layer
-    layers.append(ld.Deconv('gen_data', layers[-1].top[0], output_chn,
+    layers.extend(ld.Deconv('gen_data', layers[-1].top[0], output_chn,
                             kernel_size, stride, pad, bias_term=True,
                             filler_spec=filler_spec))
-    layers.append(ld.Tanh('gen_tanh', layers[-1].top[0]))
+    layers.extend(ld.Tanh('gen_tanh', layers[-1].top[0]))
     net.force_backward = True
     net.layer.extend(layers)
     return net
@@ -71,32 +71,32 @@ def create_dcgan_d(batchsize=64, input_chn=3, input_size=64, depth=4,
         chn[i] = chn[i-1] * 2
     layers = []
     # input
-    layers.append(ld.Input('input', ['input'],
+    layers.extend(ld.Input('input', ['input'],
                            [[batchsize, input_chn, input_size, input_size]], 'train'))
-    layers.append(ld.Input('input', ['input'],
+    layers.extend(ld.Input('input', ['input'],
                            [[batchsize, input_chn, input_size, input_size]], 'test'))
     # conv layers
-    layers.append(ld.Conv('conv0', layers[-1].top[0], chn[0], kernel_size,
+    layers.extend(ld.Conv('conv0', layers[-1].top[0], chn[0], kernel_size,
                           stride, pad, bias_term=False, filler_spec=filler_spec))
     # let the gradient propagate to the input blob
-    layers[-1].propagate_down.append(True)
+    layers[-1].propagate_down.extend(True)
     layers.extend(ld.Act('conv0_act', layers[-1].top[0],
                          bn_frac=0.9, leaky=leaky, bn=bnfirst, durelu=durelu))
     for i in range(1, depth):
-        layers.append(ld.Conv('conv%d' % (i), layers[-1].top[0], chn[i],
+        layers.extend(ld.Conv('conv%d' % (i), layers[-1].top[0], chn[i],
                               kernel_size, stride, pad, bias_term=False,
                               filler_spec=filler_spec))
         layers.extend(ld.Act('conv%d_act' % (i), layers[-1].top[0],
                              bn_frac=0.9, leaky=leaky, durelu=durelu))
     # output
     if sigmoid:
-        layers.append(ld.Linear('ip_score', layers[-1].top[0], 1,
+        layers.extend(ld.Linear('ip_score', layers[-1].top[0], 1,
                                 bias_term=True, filler_spec=filler_spec))
-        layers.append(ld.Sigmoid('sigmoid', layers[-1].top[0]))
+        layers.extend(ld.Sigmoid('sigmoid', layers[-1].top[0]))
     else:
-        layers.append(ld.Linear('ip_score', layers[-1].top[0], 1,
+        layers.extend(ld.Linear('ip_score', layers[-1].top[0], 1,
                                 bias_term=False, filler_spec=filler_spec))
-    layers.append(ld.SumLoss('sum_score', layers[-1].top[0]))
+    layers.extend(ld.SumLoss('sum_score', layers[-1].top[0]))
     net.layer.extend(layers)
     return net
 

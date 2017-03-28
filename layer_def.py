@@ -68,7 +68,7 @@ def Data(name, tops, source, batch_size, phase):
     layer.data_param.backend = caffe_pb2.DataParameter.LMDB
     layer.include.extend([_get_include(phase)])
     layer.tranform_param.CopyFrom(_get_transform_param(phase))
-    return layer
+    return [layer]
     
 def Input(name, tops, shapes, phase):
     layer = caffe_pb2.LayerParameter()
@@ -80,7 +80,7 @@ def Input(name, tops, shapes, phase):
         data_shape.dim.extend(sp)
         layer.input_param.shape.extend([data_shape])
     layer.include.extend([_get_include(phase)])
-    return layer
+    return [layer]
 
 def Reshape(name, bottom, shape):
     layer = caffe_pb2.LayerParameter()
@@ -89,7 +89,7 @@ def Reshape(name, bottom, shape):
     layer.bottom.extend([bottom])
     layer.top.extend([name])
     layer.reshape_param.shape.dim.extend(shape)
-    return layer
+    return [layer]
 
 def Conv(name, bottom, num_output, kernel_size, stride, pad, bias_term=False,
          group=1, filler_spec=('msra', 0, 1)):
@@ -118,7 +118,7 @@ def Conv(name, bottom, num_output, kernel_size, stride, pad, bias_term=False,
         layer.param.extend(_get_param(2))
     else:
         layer.param.extend(_get_param(1))
-    return layer
+    return [layer]
 
 def Deconv(name, bottom, num_output, kernel_size, stride, pad, bias_term=False,
            group=1, filler_spec=('msra', 0, 1)):
@@ -147,8 +147,66 @@ def Deconv(name, bottom, num_output, kernel_size, stride, pad, bias_term=False,
         layer.param.extend(_get_param(2))
     else:
         layer.param.extend(_get_param(1))
-    return layer
+    return [layer]
 
+def BatchNorm(name, bottom, moving_average_fraction=0.9, scale_after=True):
+    top_name = name
+    bn_layer = caffe_pb2.LayerParameter()
+    bn_layer.name = name + '_bn'
+    bn_layer.type = 'BatchNorm'
+    bn_layer.batch_norm_param.moving_average_fraction = moving_average_fraction
+    bn_layer.bottom.extend([bottom])
+    bn_layer.top.extend([top_name])
+    if scale_after is True:
+       scale_layer = caffe_pb2.LayerParameter()
+       scale_layer.name = name + '_scale'
+       scale_layer.type = 'Scale'
+       scale_layer.bottom.extend([top_name])
+       scale_layer.top.extend([top_name])
+       scale_layer.scale_param.filler.value = 1
+       scale_layer.scale_param.bias_term = True
+       scale_layer.scale_param.bias_filler.value = 0
+       return [bn_layer, scale_layer]
+    return [bn_layer]
+    
+def ReLU(name, bottom, negative_slope=0):
+    layer = caffe_pb2.LayerParameter()
+    layer.name = name + '_relu'
+    layer.type = 'ReLU'
+    layer.bottom.extend([bottom])
+    layer.top.extend([bottom])
+    if negative_slope != 0:
+        layer.relu_param.negative_slope = negative_slope
+    return [layer]
+
+def DuReLU(name, bottom):
+    top_name = name
+    # positive relu
+    pos_relu_layer = caffe_pb2.LayerParameter()
+    pos_relu_layer.name = name + '_pos_relu'
+    pos_relu_layer.type = 'ReLU'
+    pos_relu_layer.bottom.extend([bottom])
+    pos_relu_layer.top.extend([top_name+'_pos_relu'])
+    # negative
+    neg_layer = caffe_pb2.LayerParameter()
+    neg_layer.name = name + '_neg'
+    neg_layer.type = 'Power'
+    neg_layer.bottom.extend([bottom])
+    neg_layer.top.extend([top_name + '_neg_relu'])
+    neg_layer.power_param.scale = -1
+    # negative relu
+    neg_relu_layer = caffe_pb2.LayerParameter()
+    neg_relu_layer.name = name + '_neg_relu'
+    neg_relu_layer.type = 'ReLU'
+    neg_relu_layer.bottom.extend([top_name + '_neg_relu'])
+    neg_relu_layer.top.extend([top_name + '_neg_relu'])
+    # durelu
+    durelu_layer = caffe_pb2.LayerParameter()
+    durelu_layer.name = name + '_durelu'
+    durelu_layer.type = 'Concat'
+    durelu_layer.bottom.extend([top_name+'_pos_relu', top_name+'_neg_relu'])
+    durelu_layer.top.extend([top_name + '_durelu'])
+    return [pos_relu_layer, neg_layer, neg_relu_layer, durelu_layer]
 
 def Act(name, bottom, bn=True, durelu=False, bn_frac=0.9, leaky=0):
     top_name = name
@@ -235,7 +293,7 @@ def Tanh(name, bottom):
     layer.type = 'TanH'
     layer.bottom.extend([bottom])
     layer.top.extend([bottom])
-    return layer
+    return [layer]
     
 def Sigmoid(name, bottom):
     layer = caffe_pb2.LayerParameter()
@@ -243,7 +301,7 @@ def Sigmoid(name, bottom):
     layer.type = 'Sigmoid'
     layer.bottom.extend([bottom])
     layer.top.extend([bottom])
-    return layer
+    return [layer]
     
 def Pool(name, bottom, pooling_method, kernel_size, stride, pad):
     layer = caffe_pb2.LayerParameter()
@@ -260,7 +318,7 @@ def Pool(name, bottom, pooling_method, kernel_size, stride, pad):
     layer.pooling_param.kernel_size = kernel_size
     layer.pooling_param.stride = stride
     layer.pooling_param.pad = pad
-    return layer
+    return [layer]
     
 def Linear(name, bottom, num_output, bias_term=True, filler_spec=('msra', 0, 1)):
     """
@@ -283,7 +341,7 @@ def Linear(name, bottom, num_output, bias_term=True, filler_spec=('msra', 0, 1))
     else:
         layer.inner_product_param.bias_term = False
         layer.param.extend(_get_param(1))
-    return layer
+    return [layer]
 
 def Add(name, bottoms):
     layer = caffe_pb2.LayerParameter()
@@ -291,7 +349,7 @@ def Add(name, bottoms):
     layer.type = 'Eltwise'
     layer.bottom.extend(bottoms)
     layer.top.extend([name])
-    return layer
+    return [layer]
 
 def SoftmaxLoss(name, bottoms):
     layer = caffe_pb2.LayerParameter()
@@ -299,7 +357,7 @@ def SoftmaxLoss(name, bottoms):
     layer.type = 'SoftmaxWithLoss'
     layer.bottom.extend(bottoms)
     layer.top.extend([name])
-    return layer
+    return [layer]
     
 def Accuracy(name, bottoms, top_k):
     layer = caffe_pb2.LayerParameter()
@@ -309,7 +367,7 @@ def Accuracy(name, bottoms, top_k):
     layer.top.extend([name])
     layer.accuracy_param.top_k = top_k
     layer.include.extend([_get_include('test')])
-    return layer
+    return [layer]
     
 def SumLoss(name, bottom):
     layer = caffe_pb2.LayerParameter()
@@ -317,5 +375,14 @@ def SumLoss(name, bottom):
     layer.type = 'SumLoss'
     layer.bottom.append(bottom)
     layer.top.append(name)
-    return layer
+    return [layer]
+
+def L2Loss(name, bottoms):
+    top_name = name
+    layer = caffe_pb2.LayerParameter()
+    layer.name = name
+    layer.type = 'EuclideanLoss'
+    layer.bottom.extend(bottoms)
+    layer.top.extend([top_name])
+    return [layer]
     
