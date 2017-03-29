@@ -116,7 +116,7 @@ def setup_solver(args):
     std = np.array([127.5, 127.5, 127.5])
     rand_std = 1.0
     mirror = True
-    center = True
+    center = False
     # generator
     net_g = Net(args.netg, TRAIN)
     net_g.set_data_blobs(net_g.inputs)
