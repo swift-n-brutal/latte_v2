@@ -9,7 +9,7 @@ import os
 import os.path as osp
 import numpy as np
 from scipy import misc, ndimage
-DTYPE = np.float32
+from config import DTYPE, USE_GPU
 
 class ImageDataLoader(object):
     def __init__(self, folder, names, transformer=None, seed=None):
@@ -52,7 +52,8 @@ class ImageDataLoader(object):
         if batchids is None:
             batchids = self.sample_batch(blob.shape[0])
         self._load_batch(batchids, blob_name, blob.data)
-        
+
+
 from multiprocessing import Queue, Process
 class ImageDataLoaderPrefetch(ImageDataLoader):
     def __init__(self, queue_size, folder, names, transformer=None, seed=None):
@@ -77,7 +78,7 @@ class ImageDataLoaderPrefetch(ImageDataLoader):
         self.data_shapes[blob_name] = data_shape
         data_queue = Queue(self.data_queue_size)
         self.data_queues[blob_name] = data_queue
-        wp = Process(target=ImageDataLoaderPrefetch._worker_process,
+        wp = Process(target=self.__class__._worker_process,
                      args=(blob_name, data_shape, data_queue, self.batchids_queue,
                            self.folder, self.names, self.transformer))
         wp.start()
@@ -106,7 +107,7 @@ class ImageDataLoaderPrefetch(ImageDataLoader):
 #            self.dataloader._load_batch(batchids, blob_name, prefetch_data)
             for i, index in enumerate(batchids):
                 im_path = osp.join(folder, names[index])
-                im = misc.imread(im_path)
+                im = misc.imread(im_path, mode='RGB')
                 im = im.swapaxes(0,2).swapaxes(1,2)
                 if transformer is not None:
                     im = transformer.process(blob_name, im)
@@ -114,7 +115,8 @@ class ImageDataLoaderPrefetch(ImageDataLoader):
                     im = im.astype(DTYPE)
                 assert prefetch_data[i,...].shape == im.shape, 'blob shape is not equal to image shape'
                 prefetch_data[i,...] = im[...]
-            data_queue.put(prefetch_data)
+#            data_queue.put(prefetch_data)
+            data_queue.put(prefetch_data.copy())
         
     def _get_data(self, blob_name):
         """
@@ -146,7 +148,10 @@ class ImageDataLoaderPrefetch(ImageDataLoader):
         blob_name = blob_names[0]
         if batchids is None:
             prefetch_data = self._get_data(blob_name)
-            blob.data[...] = prefetch_data
+            if USE_GPU:
+                blob.gpu_data.set(prefetch_data)
+            else:
+                blob.data[...] = prefetch_data
         else:
             self.dataloader._load_batch(batchids, blob_name, blob.data)
 
@@ -172,8 +177,8 @@ class ImageTransformer(object):
     def set_scale(self, in_, scale):
         self.__check_input(in_)
         if scale.shape == () or scale.shape == (1,):
-            scale = np.array([scale,scale]).reshape(2,1)
-        elif scale.shape != (2,) and scale.shape != (2,2):
+            scale = scale.reshape(1)
+        elif scale.shape != (2, 1) and scale.shape != (2,) and scale.shape != (2,2):
             raise ValueError('Scale shape invalid. {}'.format(scale.shape))
         self.scale[in_] = scale
             
@@ -263,8 +268,27 @@ class ImageTransformer(object):
                 scalew = scale[0]*(1-randsc) + scale[1]*randsc
             elif scale.shape == (2,1):
                 # fixed scale
+                # If scaleh/w == -1, the input data is scaled to have the same
+                # height/width with the input blob.
                 scaleh = scale[0]
                 scalew = scale[1]
+                if scaleh == -1:
+                    scaleh = 1.0 * in_dims[0] / data_in.shape[1]
+                if scalew == -1:
+                    scalew = 1.0 * in_dims[1] / data_in.shape[2]
+            elif scale.shape == (1,):
+                # fixed scale, keep the ratio of h and w
+                # If scale == -1, the input data is scaled to have the same
+                # height/width with the input blob and the other edge is not
+                # shorter than the corresponding edge of the input blob.
+                if scale[0] == -1:
+                    larger_scale = np.max([1.0 * in_dims[0] / data_in.shape[1],
+                                          1.0 * in_dims[1] / data_in.shape[2]])
+                    scaleh = larger_scale
+                    scalew = larger_scale
+                else:
+                    scaleh = scale[0]
+                    scalew = scale[0]
             else:
                 scaleh = 1.0
                 scalew = 1.0
@@ -297,4 +321,176 @@ class ImageTransformer(object):
         if mean is not None:
             data_in += mean
         return data_in
+
+
+import xml.etree.ElementTree as et
+class BBoxImageDataLoaderPrefetch(ImageDataLoaderPrefetch):
+    def __init__(self, bbox, bbox_folder, qsize, img_folder, names,
+                 transformer=None, seed=None):
+        super(BBoxImageDataLoaderPrefetch, self).__init__(
+            qsize, img_folder, names, transformer=transformer, seed=seed)
+        self.bbox_folder = bbox_folder
+        self.bbox = bbox
+        if bbox is not None and bbox_folder is not None:
+            print 'WARNING: bbox ans bbox_folder can not be set at the same time.'
+            print 'Use bbox as default.'
+            self.bbox_folder = None
+    
+    def _init_bbox(self):
+        """
+            deprecated
+        """
+        bbox_folder = self.bbox_folder
+        bbox = np.zeros((self.n_images, 4), dtype=DTYPE)
+        for i, name in enumerate(self.names):
+            bbpath = osp.join(bbox_folder, name[:-5] + '.xml')
+            tree = et.parse(bbpath)
+            node = tree.find('object/bndbox')
+            xmin = np.float32(node.findtext('xmin')) - 1
+            xmax = np.float32(node.findtext('xmax')) - 1
+            ymin = np.float32(node.findtext('ymin')) - 1
+            ymax = np.float32(node.findtext('ymax')) - 1
+            anno_size = tree.find('size')
+            anno_w = np.float32(anno_size.findtext('width'))
+            anno_h = np.float32(anno_size.findtext('height'))
+            bbox[i,:] = [xmin/anno_w, xmax/anno_w, ymin/anno_h, ymax/anno_h]
+        return bbox
+
+    def add_prefetch_process(self, blob_name, data_shape):
+        batchsize = data_shape[0]
+        if self.batchids_process is None:
+            self._init_batchids_process(batchsize)
+        self.blob_names.append(blob_name)
+        self.data_shapes[blob_name] = data_shape
+        data_queue = Queue(self.data_queue_size)
+        self.data_queues[blob_name] = data_queue
+        wp = Process(target=BBoxImageDataLoaderPrefetch._worker_process,
+                     args=(blob_name, data_shape, data_queue, self.batchids_queue,
+                           self.folder, self.names, self.transformer,
+                           self.bbox, self.bbox_folder))
+        wp.start()
+        self.worker_processes.append(wp)
+    
+    @classmethod
+    def _get_bbox(cls, bbox_folder, name):
+        bbox = np.zeros(4, dtype=np.float32)
+        bbox_path = osp.join(bbox_folder, name[:-5] + '.xml')
+        tree = et.parse(bbox_path)
+        # extract the position of the bounding box
+        node = tree.find('object/bndbox')
+        xmin = np.float32(node.findtext('xmin'))
+        xmax = np.float32(node.findtext('xmax'))
+        ymin = np.float32(node.findtext('ymin'))
+        ymax = np.float32(node.findtext('ymax'))
+        # extract the size of image showed to the annotator
+        anno_size = tree.find('size')
+        anno_w = np.float32(anno_size.findtext('width'))
+        anno_h = np.float32(anno_size.findtext('height'))
+        bbox[...] = [xmin/anno_w, xmax/anno_w, ymin/anno_h, ymax/anno_h]
+        return bbox
+        
+    @classmethod
+    def _worker_process(cls, blob_name, data_shape, data_queue, batchids_queue,
+                        folder, names, transformer, bbox, bbox_folder):
+        prefetch_data = np.zeros(data_shape, dtype=DTYPE)
+        while True:
+            batchids = batchids_queue.get()
+            for i, index in enumerate(batchids):
+                name = names[index]
+                im_path = osp.join(folder, name)
+                im = misc.imread(im_path, mode='RGB')
+                im = im.swapaxes(0,2).swapaxes(1,2)
+                # crop roi
+                if bbox_folder is not None:
+                    bbox = cls._get_bbox(bbox_folder, name)
+                xmin = int(bbox[0] * im.shape[2])
+                xmax = int(bbox[1] * im.shape[2])
+                ymin = int(bbox[2] * im.shape[1])
+                ymax = int(bbox[3] * im.shape[1])
+                im = im[:,ymin:ymax,xmin:xmax]
+                if transformer is not None:
+                    im = transformer.process(blob_name, im)
+                else:
+                    im = im.astype(DTYPE)
+                assert prefetch_data[i,...].shape == im.shape, 'blob shape is not equal to image shape'
+                prefetch_data[i,...] = im[...]
+            data_queue.put(prefetch_data)
+
+class CelebADataLoaderPrefetch(ImageDataLoaderPrefetch):
+    ROI_WIDTH=128
+    ROI_VALUE=255
+    OROI_VALUE=0
+    def __init__(self, queue_size, folder, names, transformer=None, seed=None):
+        super(CelebADataLoaderPrefetch, self).__init__(
+            queue_size, folder, names, transformer=transformer, seed=seed)
+    
+    @classmethod
+    def _worker_process(cls, blob_name, data_shape, data_queue, batchids_queue,
+                        folder, names, transformer):
+        prefetch_data = np.zeros(data_shape, dtype=DTYPE)
+        while True:
+            batchids = batchids_queue.get()
+#            self.dataloader._load_batch(batchids, blob_name, prefetch_data)
+            for i, index in enumerate(batchids):
+                im_path = osp.join(folder, names[index])
+                im = misc.imread(im_path, mode='RGB')
+                im = im.swapaxes(0,2).swapaxes(1,2)
+                # add alpha channel
+                c,h,w = im.shape
+                im = np.resize(im, (c+1, h, w))
+                im[3,...] = cls.OROI_VALUE
+                h_off = (h-cls.ROI_WIDTH) / 2
+                w_off = (w-cls.ROI_WIDTH) / 2
+                im[3, h_off:h_off+cls.ROI_WIDTH, w_off:w_off+cls.ROI_WIDTH] = cls.ROI_VALUE
+                if transformer is not None:
+                    im = transformer.process(blob_name, im)
+                else:
+                    im = im.astype(DTYPE)
+                assert prefetch_data[i,...].shape == im.shape, 'blob shape is not equal to image shape'
+                prefetch_data[i,...] = im[...]
+            data_queue.put(prefetch_data)
+            
+def get_plotable_data(data):
+    data[data < 0] = 0
+    data[data > 255] = 255
+    data = data.swapaxes(0,1).swapaxes(1,2)
+    data = np.require(data, dtype=np.uint8)
+    return data
+
+import matplotlib.pyplot as plt
+if __name__ == '__main__':
+    # imagenet cat
+#    bbox = None
+#    bbox_folder = 'e:/images/ILSVRC2012_bbox_train_v2'
+#    img_folder = 'e:/images/imagenet/train'
+#    img_names = 'e:/projects/cpp/caffe-windows-ms/examples/latte_v2/test/cat_loc.txt'
+    # celeba
+    bbox = np.array([0.0/178, 178.0/178, 0.0/218, 218.0/218])
+    bbox_folder = None
+    img_folder = 'e:/images/img_align_celeba'
+    img_names = 'e:/images/img_align_celeba/names.txt'
+    blob_name = 'input'
+    blob_shape = np.array([10, 3, 64, 64])
+    inputs = {blob_name: blob_shape}
+    scale = np.array([64.0 / (45 + 128)])
+    tf = ImageTransformer(inputs)
+    tf.set_scale(blob_name, scale)
+    tf.set_center(blob_name, False)
+    bboxloader = BBoxImageDataLoaderPrefetch(bbox, bbox_folder, 2, img_folder,
+                                             img_names, transformer=tf)
+    try:
+        bboxloader.add_prefetch_process(blob_name, inputs[blob_name])
+        for i in xrange(2):
+            data = bboxloader._get_data(blob_name)
+            n_samples = data.shape[0]
+            for j in xrange(n_samples):
+                im = tf.deprocess(blob_name, data[j,...])
+                im = get_plotable_data(im)
+                print i, j, im.shape
+                plt.imshow(im)
+                plt.waitforbuttonpress()
+                plt.close()
+    finally:
+        bboxloader.clean_and_close()
+        print 'Close all processes. Program exits.'
     
