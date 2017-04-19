@@ -1,0 +1,13 @@
+python test_began.py `
+  --netg began_g_gstd0.02.prototxt `
+  --netd began_d_gstd0.02.prototxt `
+  --imfd e:\images\img_align_celeba `
+  --imnm e:\images\img_align_celeba\names.txt `
+  --dpit 10 `
+  --tsit 100 `
+  --snit 5000 `
+  --mxit 500000 `
+  --svto results\celeba_center_began_default `
+  --qsize 4 `
+  --score_blob l1_loss_samplewise `
+  --dvid 1
